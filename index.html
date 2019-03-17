@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>wikidata based extend search</title>
+
+	<link href="bower_components/bootstrap4/dist/css/bootstrap.min.css" rel="stylesheet">
+ 	<link href="bower_components/fontawesome/css/all.min.css" rel="stylesheet">
+	<link href="bower_components/bootstrap-select/dist/css/bootstrap-select.min.css" rel="stylesheet">
+	<link href="bower_components/jquery-ui/themes/base/jquery-ui.css" rel="stylesheet">
+	<link href="bower_components/codemirror/lib/codemirror.css" rel="stylesheet">
+	<link href="bower_components/datatables.net-dt/css/jquery.dataTables.min.css" rel="stylesheet">
+
+	<script src="bower_components/jquery/dist/jquery.min.js"></script>
+	<script src="bower_components/wikidata-sdk/dist/wikidata-sdk.js"></script>
+	<script src="bower_components/bootstrap4/dist/js/bootstrap.bundle.min.js"></script>
+	<script src="bower_components/bootstrap-select/dist/js/bootstrap-select.min.js"></script>
+	<script src="bower_components/datatables.net/js/jquery.dataTables.min.js"></script>
+	<script src="bower_components/bootstrap-select/dist/js/i18n/defaults-de_DE.js"></script>
+	<script src="bower_components/jquery-ui/jquery-ui.min.js"></script>
+	<script src="bower_components/codemirror/lib/codemirror.js"></script>
+	<script src="bower_components/codemirror/mode/sparql/sparql.js"></script>
+
+<script>
+//console.log(wdk.searchEntities({ search: 'instance of', type: 'property' }));
+const search = 'instance of'
+const language = 'de' // will default to 'en'
+const limit = 20 // defaults to 20
+const format = 'json' // defaults to json
+const solrBaseURL = "http://127.0.0.1:8983/solr/stbCore/"
+
+function getEntity(search){
+	const url = wdk.searchEntities(search, language, limit, format)
+	//console.log(url);
+	$.getJSON(url,function(data){ 
+	//console.log(data);
+	//console.log(data.search.length);
+		var result = "";
+		 $.each(data.search, function(i, item) {
+		    result = result+ item.id+" "+item.label;
+		  });
+
+		//return result;
+	 });
+
+	return url;
+}
+
+</script>
+	<style>
+		body{margin:10px;}
+		h1 { color: #2989bb; }
+		form {margin: 20px; }
+		.rounded-no-right {
+			border-top-right-radius:0 !important;
+			border-bottom-right-radius:0 !important;
+		}
+		.rounded-no {
+			border-radius:0 !important;
+
+		}
+		#docResult {margin:8px; }
+		.CodeMirror{ border: 1px solid #ccc; height:auto; }
+		.searchWork {cursor:pointer;}
+	</style>
+
+</head>
+<body>
+<h1>Erweiterte Suche im Bibliothekskatalog mit Wikidata</h1>
+<form style='max-width:1200px;' method='get'>
+
+<div class="form-group row" style='margin-bottom:10px; margin-left:1px;'>
+		<div class="input-group "> 
+
+			<select id='solrField_0' class="selectpicker rounded-left"  name="solrField[]">
+			  <option value="autor_str"><a href="https://www.wikidata.org/wiki/Property:P31">Autor</a></option>
+			  <option>Titel</option>
+			  <option>Schlagwort</option>
+
+			</select>
+
+			<select id='property_0' class="selectpicker rounded-no " data-live-search="true" name="property[]">
+			  <option value="">Eigenschaft wählen</option>
+			  <option value="P569">Geburtsdatum</option>
+			  <option value="P19">Geburtsort</option>
+			  <option value="P17(P19)">Land des Geburtsortes</option>
+			  <option value='P27'>Staatsbürgerschaft</option>
+			  <option value='P106'>Beruf/Tätigkeit</option>
+			  <option value='P101'>Tätigkeitsfeld</option>
+			  <option value='P166'>Auszeichnung</option>
+			  <option value='P585(P166)'>Datum der Auszeichnung</option>
+			  
+			</select>
+
+			<select id='propertyconn_0' class="selectpicker rounded-no" name="propertyconn[]" data-hide-disabled="true">
+				<option class="pcoDefault" value="">ist</option>
+				<option class="pcoDefault" value="not">nicht</option>
+				<optgroup class="pcoDate" data-hide-disabled="true" label="Jahr">
+				<option class="pcoDate" value="">Filteroperator</option>
+				<option class="pcoDate" value="<">kleiner als</option>
+				<option class="pcoDate" value=">">größer als</option>
+				<option class="pcoDate" value="=">ist gleich</option>
+			</select>
+
+		    <input type="text" id="object_0" class="form-control rounded-right" name="object[]" placeholder="Suchbegriff"/>
+
+		<button type="button" class="btn btn-outline-primary copyRow" style='margin-left:10px;'>+</button>
+		<button type="button" class="btn btn-outline-primary deleteRow" style="margin-left:10px;" disabled=""><i class="fa fa-trash"></i></button>
+   </div>
+</div>
+	<button id='querySubmit' name='querySubmit' type="button" class="btn btn-primary">Suchen</button>
+</form>
+
+<textarea style='display:none;' id='sparqlCode'></textarea>
+
+<table id='sparqlResult' class="table table-striped" style="display:none; width:100%;">
+<thead>
+	<th scope='col'>Wikidata-ID</th>
+	<th scope='col'>Label</th>
+	<th scope='col'>GND-ID</th>
+	<th scope='col'>Anzahl Werke im Katalog</th>
+	<th scope='col'>Werke anzeigen</th>
+</thead>
+<tbody></tbody>
+</table>
+
+<div class="modal fade " tabindex="-1" role="dialog" id='docResultModal'>
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Ergebnisse im Katalog</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body" id="docResult">
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const tableSettings = {
+                          "language": {
+                                "sEmptyTable":      "Keine Daten in der Tabelle vorhanden",
+                                "sInfo":            "_START_ bis _END_ von _TOTAL_ Einträgen",
+                                "sInfoEmpty":       "0 bis 0 von 0 Einträgen",
+                                "sInfoFiltered":    "(gefiltert von _MAX_ Einträgen)",
+                                "sInfoPostFix":     "",
+                                "sInfoThousands":   ".",
+                                "sLengthMenu":      "_MENU_ Einträge anzeigen",
+                                "sLoadingRecords":  "Wird geladen...",
+                                "sProcessing":      "Bitte warten...",
+                                "sSearch":          "Suchen",
+                                "sZeroRecords":     "Keine Einträge vorhanden.",
+                                "oPaginate": {
+                                "sFirst":       "Erste",
+                                "sPrevious":    "Zurück",
+                                "sNext":        "Nächste",
+                                "sLast":        "Letzte"
+                                 },
+                                    "oAria": {
+                                    "sSortAscending":  ": aktivieren, um Spalte aufsteigend zu sortieren",
+                                    "sSortDescending": ": aktivieren, um Spalte absteigend zu sortieren"
+                                 },
+                                    select: {
+                                        rows: {
+                                        _: '%d Zeilen ausgewählt',
+                                    0: 'Zum Auswählen auf eine Zeile klicken',
+                                        1: '1 Zeile ausgewählt'
+                                        }
+                                 }
+                           }//Ende DataTable - Language Parameter
+
+
+                       };
+
+/*** SOLR Functions ***/
+
+
+function getSolrQ(searchString,searchField){
+
+	solrQ = "";
+	switch(searchField){
+		case 'Authors_str':
+			searchStr = searchString.split(" ");
+
+			$.each(searchStr,function(i, item){
+				solrQ = solrQ + searchField+":*"+item+"*";
+				if(i<searchStr.length-1){ solrQ = solrQ + " AND "; }
+			});
+		break;
+		
+		default:
+			solrQ = searchField+":"+searchString;
+		break;
+	}
+
+
+	//console.log(solrQ);
+	return solrQ;
+
+}
+
+function getNumOfWorks(searchString,searchField,counter,gndid,callback){
+
+	solrQ = getSolrQ(searchString, searchField);
+	solrURL = solrBaseURL+"select?q="+solrQ+"&rows=50";
+	//console.log(solrURL);
+	response = new Object();
+	$.getJSON(solrURL,function(data){ 
+		//console.log(data);
+		result = data.response.numFound;
+	//console.log(data.search.length);
+		/*var result = "";
+		 $.each(data.search, function(i, item) {
+		    result = result+ item.id+" "+item.label;
+		  });
+	*/
+		//return result;
+		//$("td#now_"+counter).html(result);
+		response.result = result;
+		response.searchStr = searchString;
+		response.searchField = searchField;
+		response.counter = counter;
+		response.gndid = gndid;
+		callback(response);
+	 });
+
+}
+
+function getbibInfo(searchString,searchField,i){
+
+	solrQ = getSolrQ(searchString, searchField);
+	solrURL = solrBaseURL+"select?q="+solrQ+"&rows=50";
+	//console.log(solrURL);
+	$('#docResult').html('');
+	$.getJSON(solrURL,function(data){ 
+	
+		 $.each(data.response.docs, function(i, doc) {
+		    result = doc["Title"]+" : "+doc["Authors_str"];
+		    if(typeof doc["PublisherWithCityDescription"] !== 'undefined'){
+			pubYear = doc["PublisherWithCityDescription"]+", ";
+		    }
+		    else { pubYear = ""; }
+		    $('#docResult').append("<div id='doc_"+i+"'><h4><i class=\"fas fa-book\"></i> "+result+"</h4>"+
+			pubYear+doc["ProductionYear"]+" <a href=\"https://katalog.buechereien.wien.at/index.asp?DB=BIB_SYS&startmedinr="+doc["Id"]+"\" target='_blank'>Im Katalog</a></div>");
+		  });
+		$('#docResultHeader').css('display','block');
+		//return result;
+		
+	 });
+
+}
+
+/*** SPARQL Function(s) ***/
+function makeSPARQLQuery( endpointUrl, sparqlQuery,  doneCallback ) {
+	var settings = {
+		headers: { Accept: 'application/sparql-results+json' },
+		data: { query: sparqlQuery }
+	};
+	return $.ajax( endpointUrl, settings ).then( doneCallback );
+}
+</script>
+<script>
+/*** Event Handler ***/
+$(document).on("click",".copyRow",function(){
+
+	var row = $(this).parent().parent();
+
+
+	propleng = $("form").find("select[name='solrField[]']").length-1;
+	//console.log(propleng);
+	var select = $("select");
+        //console.log(select);
+	//console.log(select[propleng]);
+
+	clone = $("<div class=\"form-group row\" style='margin-bottom:10px; margin-left:1px;'>"+row.html()+"</div>").insertBefore($("button[name='querySubmit']"));
+	propid = $($("select[name='property[]']").get(propleng)).attr('id');
+	//console.log(propid);
+	const regex = /property_([\d]*)/gm;
+	while ((m = regex.exec(propid)) !== null) {
+	    if (m.index === regex.lastIndex) {
+		regex.lastIndex++;
+	    }
+	    counter = parseInt(m[1])+1;
+            //console.log(counter);
+	}
+
+	clone.find("select[name='property[]']").attr('id','property_'+counter);
+	clone.find("select[name='solrField[]']").attr('id','solrField_'+counter);
+	clone.find("select[name='propertyconn[]']").attr('id','propertyconn_'+counter);
+	clone.find("input[name='object[]']").attr('id','object_'+counter);
+	clone.find('.bootstrap-select').replaceWith(function() { return $('select', this); });
+	clone.find('select').selectpicker();
+
+	var parprop = clone.find("select[name='property[]']");
+	var propsel = "";
+	changePropConnSelect(parprop,propsel);
+	clone.find("select[name='propertyconn[]']").selectpicker('destroy');
+	clone.find("select[name='propertyconn[]']").selectpicker('');
+
+	$("input[name='object[]']:last").focus();
+	$('.deleteRow').removeAttr('disabled');
+
+});
+
+$(function () {
+    $('.selectpicker').selectpicker();
+    $('.bootstrap-select > button.dropdown-toggle').addClass('rounded-no');
+    $('.bootstrap-select > button.dropdown-toggle').css('background-color','#f2f2f2');
+    $('.bootstrap-select > button.dropdown-toggle').css('border','1px solid #ced4da');
+});
+$(document).on("keyup", "input[name='object[]']", function() {
+	var input = $(this);
+
+	wdurl = getEntity($(this).val());
+	//console.log(wdurl);
+	$.ajax({
+		 url:wdurl
+		}).done(function(data){
+			var result = [];
+			 $.each(data.search, function(i, item) {
+			    result[i] = {"id": item.id, "label": item.label+" ("+item.id+")", "value": item.id};
+			  });
+			  $(input).autocomplete({
+				source: result,
+				select: function(event, ui){
+				console.log(ui);
+				}
+			});
+		});
+
+});
+
+$(document).on("click","#querySubmit",function(){
+
+	propleng = $("form").find("select[name='solrField[]']").length;
+	var sparql = "";
+	var endpointUrl = 'https://query.wikidata.org/sparql'
+	var P106Sparql = "VALUES (?profession) {";
+
+	for(i=0;i<propleng;i++){
+		solr = $("#solrField_"+i).val();
+		prop = $("#property_"+i).val();
+		obj = $("#object_"+i).val();
+		propconn = $("#propertyconn_"+i).val();
+		console.log(propconn);
+		switch(propconn){
+			case "not":
+				notpref = "FILTER NOT EXISTS {";
+				notsuf = "}\n";
+			break;
+			
+
+			case "<":
+			case ">":
+			case "=":
+				connoperator = propconn;
+			break;
+			
+			default:
+				notpref = "";
+				notsuf = "";
+			break;
+
+		}
+
+
+		if(solr=='autor_str'){ //Es wird ein Autor gesucht
+			if(obj!=""){
+			switch(prop){
+				case "P569":
+					sparql += "\t?autor_str wdt:P569 ?Gebdatum. \n";
+					sparql += "\tFILTER((YEAR(?Gebdatum)) "+connoperator+" "+obj+") \n";
+				break;
+
+				case "P106":
+					P106Sparql += notpref+"\n\t\t(wd:"+obj+")\n"+notsuf;
+				break;
+
+				case "P17(P19)":
+					sparql += "\t?autor_str wdt:P19 ?Geburtsort.\n";
+					sparql += notpref+"\t?Geburtsort wdt:P17 wd:"+obj+". \n"+notsuf;
+				break;
+
+				case "P166":
+					sparql += "\t?autor_str p:P166 ?Preis.\n";
+					sparql += "\t?Preis ps:P166 wd:"+obj+". \n";
+					sparql += "\tOPTIONAL{?Preis pq:P585 ?PreisJahr.} \n";
+				break;
+
+				case "P585(P166)":
+					sparql += "\t FILTER((YEAR(?PreisJahr)) "+connoperator+" "+obj+") \n";
+				break;
+
+				default:
+					sparql += notpref+"\t?autor_str wdt:"+prop+" wd:"+obj+". \n"+notsuf;
+				break;
+			}}
+
+		}
+
+	}
+
+	if(P106Sparql!='VALUES (?profession) {'){
+		P106Sparql += "\n}\n\t?autor_str wdt:P106 ?Beruf.\n\t?Beruf (wdt:P31|wdt:P279*) ?profession\n";
+		sparql += P106Sparql;
+	}
+
+var sparqlQuery = "SELECT DISTINCT ?autor_str ?autor_strLabel ?GND_Kennung  WHERE {   SERVICE wikibase:label { bd:serviceParam wikibase:language \"[AUTO_LANGUAGE],en\". }\n"  +sparql+"\n" +      "  \tOPTIONAL { ?autor_str wdt:P227 ?GND_Kennung. }\n}";
+	//console.log(sparqlQuery);
+	makeSPARQLQuery( endpointUrl, sparqlQuery, function( data ) {
+				var Table = $('#sparqlResult').DataTable();				
+				Table.destroy();
+				$('#sparqlCode').html('');				
+				$('#sparqlResult > tbody').html('');
+				$('.CodeMirror').remove();
+				$('.tryitatWD').remove();
+				$('#sparqlCode').html(sparqlQuery);
+				$('#sparqlCode').css('display','block');
+				$('#sparqlCode').after("<p class='tryitatWD'><a href='https://query.wikidata.org/#"+encodeURI(sparqlQuery)+"' target='_blank'>Try it@Wikidata!</a></p>");
+				var textArea = document.getElementById('sparqlCode');
+				var editor = CodeMirror.fromTextArea(textArea, {
+				    lineNumbers: true,
+				    gutter: true,
+				    lineWrapping: true
+				});
+								
+				var sparqlResHTML = "";
+				var rowCounter = 0;
+				$.each(data.results.bindings,function(i, item){
+					//console.log(item);
+
+					gndid = "";
+					if(typeof item.GND_Kennung !== "undefined"){
+						gndid = item.GND_Kennung.value;
+						searchStr = gndid;
+						searchField = "autorGND";
+					}
+					else {
+						searchStr = item.autor_strLabel.value;
+						searchField = "Authors_str";
+					}
+					getNumOfWorks(searchStr,searchField,i,gndid,function(response){
+				            
+						sparqlResHTML += "<tr><td><a href='"+item.autor_str.value+"' target='_blank'>"+item.autor_str.value+"</a></td><td>"+item.autor_strLabel.value + "</td><td>"+response.gndid+"</td><td id='now_"+i+"'>"+response.result+"</td><td><i class=\"fas fa-search searchWork\"  data-value='"+response.searchStr+"' data-field='"+response.searchField+"' data-counter='"+response.counter+"'></i></td></tr>";
+						rowCounter++;
+						if(rowCounter==data.results.bindings.length) { buildTable(sparqlResHTML); }
+					});
+				         
+				});
+				
+			});
+
+	console.log(sparql);
+});
+
+function buildTable(tabelhtml){
+	$('#sparqlResult > tbody').append(tabelhtml);
+	$('#sparqlResult').css('display','');
+	$('#sparqlResult').DataTable(tableSettings);
+}
+
+$(document).on("click",".searchWork",function(){
+	getbibInfo(($(this)).data().value,($(this)).data().field,($(this)).data().counter);
+	$('#docResultModal').modal('show');
+});
+
+$(document).on("click",".deleteRow",function(){
+	var row = $(this).parent().parent();
+	$(row).remove();
+	var row = $('.deleteRow');
+	if(row.length=='1'){ $('.deleteRow').attr('disabled','true'); }
+});
+
+function changePropConnSelect(parprop, propsel){
+console.log(propsel);
+	switch(propsel){
+	
+		case "P569":
+		case "P585(P166)":
+			propconns = $(parprop).parent().parent().find("[name='propertyconn[]']");
+			$.each(propconns[0].children,function(){
+			console.log($(this)[0].className);
+				switch($(this)[0].className){
+					case "pcoDate":
+						$(this).removeAttr('disabled'); $(this).show();
+					break;
+					case "pcoDefault":
+					
+						$(this).attr('disabled','true'); $(this).hide();
+					break;
+				}
+			propconns.selectpicker('deselectAll');
+			propconns.selectpicker('refresh');
+			//propconns.selectpicker();
+			});
+		break;
+		
+		default:
+			//console.log($(this));
+			//console.log($(parprop).attr('id'));
+			propconns = $(parprop).parent().parent().find("[name='propertyconn[]']");
+			$.each(propconns[0].children,function(){
+			//console.log($(this)[0].className);
+				switch($(this)[0].className){
+					case "pcoDate":
+						$(this).attr('disabled','true'); $(this).hide();
+					break;
+					case "pcoDefault":
+						$(this).removeAttr('disabled'); $(this).show();
+					break;
+				}
+			propconns.selectpicker('deselectAll');
+			propconns.selectpicker('refresh');
+			//propconns.selectpicker();
+			});
+			
+		break;
+	}
+}
+
+$(document).on("change","select[name='property[]']",function(){
+	var parprop = $(this);
+	var propsel = $(this).find("option:selected").val();
+	changePropConnSelect(parprop,propsel);
+
+});
+
+$(document).ready(function(){
+
+	var parprop = $("select[name='property[]']");
+	var propsel = $("select[name='property[]']").find("option:selected").val();
+	changePropConnSelect(parprop,propsel);
+
+});
+
+</script>
+</body>
+</html>

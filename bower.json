@@ -1,0 +1,23 @@
+{
+  "name": "sowas",
+  "authors": [
+    "LibrErli <chris.erlinger@scout.at>"
+  ],
+  "description": "semantic and ontology webbased search application",
+  "main": "index.php",
+  "license": "MIT",
+  "homepage": "#",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "bootstrap4-select": "^1.12.3",
+    "bootstrap4": "^4.3.1",
+    "jquery": "^3.3.1",
+    "wikidata-sdk": "^5.1.4"
+  }
+}
